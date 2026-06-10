@@ -24,6 +24,235 @@ To use the bindings, load it via Autoload
 require_once('vendor/autoload.php');
 ```
 
+## V5 API
+
+The [V5 API](https://developers.bannerbear.com/v5/) is a new generation of the Bannerbear API. **V5 API keys do not work with V2 endpoints, and V2 API keys do not work with V5 endpoints** — you must use the right client class for your key.
+
+For the **V5 API**, use `Bannerbear\V5\Client` (this section).
+For the **legacy V2 API**, see [Usage](#usage) below — that section is unchanged.
+
+### Table of Contents
+
+- [Authentication (V5)](#authentication-v5)
+- [Account (V5)](#account-v5)
+- [Image Templates (V5)](#image-templates-v5)
+- [Images (V5)](#images-v5)
+- [Batches (V5)](#batches-v5)
+- [Webhooks (V5)](#webhooks-v5)
+- [Instant URLs (V5)](#instant-urls-v5)
+
+### Authentication (V5)
+
+```php
+$bb = new Bannerbear\V5\Client("your V5 API key");
+```
+
+Or set `BANNERBEAR_API_KEY` and instantiate without arguments:
+
+```php
+$bb = new Bannerbear\V5\Client();
+```
+
+### Account (V5)
+
+```php
+$bb->account();
+```
+
+### Image Templates (V5)
+
+V5 renames V2's `templates` resource to `image_templates`.
+
+```php
+$bb->list_image_templates(1);
+$bb->get_image_template("template uid");
+$bb->update_image_template("template uid", [
+    "name" => "New Name",
+    "description" => "...",
+    "tags" => ["portrait"],
+]);
+```
+
+### Images (V5)
+
+V5's `modifications` is an **associative array** with two sub-keys:
+
+- `template` — template-level changes (width, height, etc.)
+- `objects` — array of per-layer changes (equivalent to V2's flat modifications array)
+
+```php
+$bb->create_image("template uid", [
+    "modifications" => [
+        "template" => ["width" => 1080, "height" => 1080],
+        "objects" => [
+            ["name" => "headline", "text" => "Hello World!"],
+            [
+                "name" => "photo",
+                "image_url" => "https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=1000&q=80",
+            ],
+        ],
+    ],
+]);
+```
+
+Synchronous generation routes to `sync.api.bannerbear.com/v5` (10s timeout). The 3rd positional `synchronous` argument is a transport switch — it is **not** sent in the request body:
+
+```php
+$bb->create_image("template uid", ["modifications" => ["objects" => [...]]], true);
+```
+
+##### Options for `create_image`
+
+- `modifications`: V5 modifications array (`array`)
+- `formats`: output formats, e.g. `["jpg", "pdf"]` (`array`)
+- `scale`: scale multiplier, 1–4 (`integer`)
+- `dpi`: DPI metadata (`integer`)
+- `quality`: quality control (`integer`)
+- `proxy`: proxy server for asset fetching (`string`)
+- `metadata`: include any metadata to reference at a later point (`string`)
+- `version`: pin template version (`integer`)
+- 3rd positional `synchronous`: route to the sync host (`boolean`; SDK-only, not sent to the API)
+
+```php
+$bb->get_image("image uid");
+$bb->list_images(1);
+```
+
+### Batches (V5)
+
+Generate multiple images in one request (up to 100).
+
+```php
+$bb->create_batch([
+    "type" => "image",
+    "items" => [
+        ["template" => "template uid 1", "modifications" => ["objects" => [...]]],
+        ["template" => "template uid 2", "modifications" => ["objects" => [...]]],
+    ],
+]);
+$bb->get_batch("batch uid");
+$bb->list_batches(1);
+```
+
+### Webhooks (V5)
+
+Webhooks are managed as a first-class resource in V5 (instead of being a per-request `webhook_url` parameter).
+
+```php
+$hook = $bb->create_webhook([
+    "name" => "my-webhook",
+    "url" => "https://example.com/hook",
+    "resource" => "image",
+    "event" => "completed",
+    "status" => "active",
+    "scope" => "all",
+    "templates" => [],
+]);
+
+// IMPORTANT: signing_key is ONLY returned in the create response. Store it now —
+// subsequent get_webhook calls will not include it.
+echo $hook["signing_key"];
+```
+
+CRUD:
+
+```php
+$bb->get_webhook("webhook uid");
+$bb->update_webhook("webhook uid", [
+    "name" => "renamed",
+    "url" => "https://example.com/hook",
+    "resource" => "image",
+    "event" => "completed",
+    "status" => "active",
+    "scope" => "all",
+]);
+$bb->delete_webhook("webhook uid");
+$bb->list_webhooks(1);
+```
+
+### Instant URLs (V5)
+
+Instant URLs are URLs bound to a template that can be manipulated with query strings — the V5 equivalent of V2's "Signed URLs" feature.
+
+#### Create an Instant URL base
+
+```php
+$iurl = $bb->create_instant_url([
+    "name" => "my-instant-url",
+    "template" => "template uid",
+    "mode" => "encoded",       // or "named_params"
+    "security" => "signed",    // or "open"
+    "status" => "active",
+    "scale" => 1,              // 1, 2, 3, or 4
+]);
+
+// IMPORTANT: signing_key is ONLY returned in the create response. Store it now.
+echo $iurl["signing_key"];
+echo $iurl["base_url"];
+```
+
+##### Options for `create_instant_url` / `update_instant_url`
+
+- `name` *required* (`string`)
+- `template` *required* — image template UID (`string`)
+- `mode`: `"encoded"` or `"named_params"` (`string`)
+- `security`: `"signed"` or `"open"` (`string`)
+- `status`: `"active"` or `"disabled"` (`string`)
+- `scale`: 1, 2, 3, or 4 (`integer`)
+- `rate_limit`: enable per-IP rate limiting (`boolean`)
+- `template_version`: pin template version (`integer | null`)
+- `max_renders`: cap total renders (`integer | null`)
+- `expires_at`: ISO 8601 expiry (`string | null`)
+
+CRUD:
+
+```php
+$bb->get_instant_url("uid");
+$bb->update_instant_url("uid", ["name" => "...", "template" => "...", /* ... */]);
+$bb->delete_instant_url("uid");
+$bb->list_instant_urls(1);
+```
+
+#### Build an Instant URL with modifications
+
+`build_instant_url` is a pure local helper — no API call. It composes the URL from a base + modifications and, if a signing key is provided, appends the HMAC signature.
+
+```php
+// Encoded mode, signed
+$bb->build_instant_url($iurl["base_url"], [
+    "mode" => "encoded",
+    "signing_key" => $iurl["signing_key"],
+    "modifications" => [
+        "template" => ["width" => 1030, "height" => 890],
+        "objects" => [["name" => "title", "text" => "Hello!", "color" => "#ffffff"]],
+    ],
+]);
+
+// Named params mode, signed
+$bb->build_instant_url($iurl["base_url"], [
+    "mode" => "named_params",
+    "signing_key" => $iurl["signing_key"],
+    "modifications" => [
+        "template" => ["width" => 1030, "height" => 890],
+        "objects" => [["name" => "title", "text" => "Hello!"]],
+    ],
+]);
+
+// Open (unsigned): omit signing_key
+$bb->build_instant_url($iurl["base_url"], [
+    "mode" => "encoded",
+    "modifications" => ["objects" => [["name" => "title", "text" => "Hello!"]]],
+]);
+```
+
+##### Options for `build_instant_url`
+
+- `mode`: `"encoded"` (default) or `"named_params"` (`string`)
+- `signing_key`: only needed when the instant URL was created with `security: "signed"` (`string`)
+- `modifications`: same shape as `create_image`'s modifications (`array`)
+
+---
+
 ## Usage
 
 ### Table of Contents
