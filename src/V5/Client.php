@@ -29,6 +29,12 @@ class Client
         return new Api(self::$syncApiBase, $headers);
     }
 
+    protected function factoryRaw(string $contentType): Api
+    {
+        $headers = ['Content-Type: ' . $contentType, 'Authorization: Bearer ' . $this->apiKey];
+        return new Api(self::$apiBase, $headers);
+    }
+
     public function account()
     {
         return $this->factory()->get('/account');
@@ -52,9 +58,22 @@ class Client
     /**
      * @param array<string,mixed> $params
      */
+    public function create_image_template(array $params)
+    {
+        return $this->factory()->post('/image_templates', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
     public function update_image_template(string $uid, array $params)
     {
         return $this->factory()->patch('/image_templates/' . $uid, $params);
+    }
+
+    public function delete_image_template(string $uid)
+    {
+        return $this->factory()->delete('/image_templates/' . $uid);
     }
 
     // =================================
@@ -82,6 +101,221 @@ class Client
             return $this->factorySync()->post('/images', $params);
         }
         return $this->factory()->post('/images', $params);
+    }
+
+    // =================================
+    //              TOOLS
+    // =================================
+    //
+    // Every tool is asynchronous: the POST returns a pending tool job. Poll
+    // get_tool_job until the status is "completed" or "failed", or subscribe to
+    // a webhook with the resource "tool_job". All tools accept an optional
+    // "metadata" string.
+
+    /**
+     * Calls any tool by name — the escape hatch for tools added after this release.
+     *
+     * @param array<string,mixed> $params
+     */
+    public function create_tool_job(string $tool, array $params)
+    {
+        return $this->factory()->post('/tools/' . $tool, $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function remove_bg(array $params)
+    {
+        return $this->factory()->post('/tools/remove_bg', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function create_pdf(array $params)
+    {
+        return $this->factory()->post('/tools/create_pdf', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function trim_video(array $params)
+    {
+        return $this->factory()->post('/tools/trim_video', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function concat_videos(array $params)
+    {
+        return $this->factory()->post('/tools/concat_videos', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function resize_video(array $params)
+    {
+        return $this->factory()->post('/tools/resize_video', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function crop_video(array $params)
+    {
+        return $this->factory()->post('/tools/crop_video', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function overlay_video(array $params)
+    {
+        return $this->factory()->post('/tools/overlay_video', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function overlay_image(array $params)
+    {
+        return $this->factory()->post('/tools/overlay_image', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function subtitle_video(array $params)
+    {
+        return $this->factory()->post('/tools/subtitle_video', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function generate_voiceover(array $params)
+    {
+        return $this->factory()->post('/tools/generate_voiceover', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function add_audio(array $params)
+    {
+        return $this->factory()->post('/tools/add_audio', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function add_cover_art(array $params)
+    {
+        return $this->factory()->post('/tools/add_cover_art', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function create_video_slideshow(array $params)
+    {
+        return $this->factory()->post('/tools/create_video_slideshow', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function apply_color_filter(array $params)
+    {
+        return $this->factory()->post('/tools/apply_color_filter', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function soften_video(array $params)
+    {
+        return $this->factory()->post('/tools/soften_video', $params);
+    }
+
+    // =================================
+    //            TOOL JOBS
+    // =================================
+
+    public function list_tool_jobs(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/tool_jobs' . $qs);
+    }
+
+    public function get_tool_job(string $uid)
+    {
+        return $this->factory()->get('/tool_jobs/' . $uid);
+    }
+
+    // =================================
+    //              ASSETS
+    // =================================
+
+    /**
+     * Uploads raw file bytes (max 5MB) and returns a durable CDN URL.
+     * $contentType must be the mime type of the data, e.g. "image/png" or
+     * "video/mp4". Uploads are deduplicated per workspace by SHA-256, so
+     * re-uploading the same bytes returns the existing asset.
+     */
+    public function upload_asset(string $data, string $contentType)
+    {
+        return $this->factoryRaw($contentType)->postRaw('/assets', $data);
+    }
+
+    public function get_asset(string $uid)
+    {
+        return $this->factory()->get('/assets/' . $uid);
+    }
+
+    public function list_assets(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/assets' . $qs);
+    }
+
+    /**
+     * Maps each SHA-256 content hash to its existing asset, or null. Lets a
+     * syncing client skip the upload round-trip for content that is already
+     * stored. Max 100 hashes per call.
+     *
+     * @param array<int,string> $contentHashes
+     */
+    public function check_assets(array $contentHashes)
+    {
+        return $this->factory()->post('/assets/check', ['content_hashes' => $contentHashes]);
+    }
+
+    // =================================
+    //           PUBLICATIONS
+    // =================================
+
+    public function list_publications(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/publications' . $qs);
+    }
+
+    public function get_publication(string $uid)
+    {
+        return $this->factory()->get('/publications/' . $uid);
+    }
+
+    /**
+     * Clones a publication into the workspace as a new image template.
+     */
+    public function install_publication(string $uid)
+    {
+        return $this->factory()->post('/publications/' . $uid . '/install', []);
     }
 
     // =================================
@@ -297,7 +531,23 @@ class Api
     {
         curl_setopt($this->client, CURLOPT_URL, $this->getUrl($url));
         curl_setopt($this->client, CURLOPT_POST, true);
-        curl_setopt($this->client, CURLOPT_POSTFIELDS, json_encode($params));
+        // An empty array encodes as "[]", so send an object instead — endpoints
+        // that take no parameters still expect a JSON object body.
+        curl_setopt($this->client, CURLOPT_POSTFIELDS, json_encode($params ?: new \stdClass()));
+        $res = curl_exec($this->client);
+        $this->checkAndClose();
+        return is_string($res) && $res !== '' ? json_decode($res, true) : null;
+    }
+
+    /**
+     * POSTs a raw body verbatim — used for asset uploads, where the payload is
+     * file bytes rather than JSON.
+     */
+    public function postRaw(string $url, string $body)
+    {
+        curl_setopt($this->client, CURLOPT_URL, $this->getUrl($url));
+        curl_setopt($this->client, CURLOPT_POST, true);
+        curl_setopt($this->client, CURLOPT_POSTFIELDS, $body);
         $res = curl_exec($this->client);
         $this->checkAndClose();
         return is_string($res) && $res !== '' ? json_decode($res, true) : null;
