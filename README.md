@@ -37,6 +37,10 @@ For the **legacy V2 API**, see [Usage](#usage) below — that section is unchang
 - [Account (V5)](#account-v5)
 - [Image Templates (V5)](#image-templates-v5)
 - [Images (V5)](#images-v5)
+- [Animation Templates (V5)](#animation-templates-v5)
+- [Animations (V5)](#animations-v5)
+- [Workflows (V5)](#workflows-v5)
+- [Workflow Runs (V5)](#workflow-runs-v5)
 - [Tools (V5)](#tools-v5)
 - [Assets (V5)](#assets-v5)
 - [Publications (V5)](#publications-v5)
@@ -148,6 +152,104 @@ $bb->get_image("image uid");
 $bb->list_images(1);
 ```
 
+### Animation Templates (V5)
+
+Animation templates render video instead of a still image. They carry a `frame_rate` and a `duration_seconds` in place of the image template's static canvas.
+
+```php
+$bb->list_animation_templates(1);
+$bb->get_animation_template("template uid");
+
+$bb->create_animation_template([
+    "name" => "My Animation",
+    "description" => "Created from the API",
+    "tags" => ["promo"],
+    "width" => 1080,
+    "height" => 1080,
+    "frame_rate" => 30,
+]);
+
+$bb->update_animation_template("template uid", ["name" => "New Name", "frame_rate" => 60]);
+$bb->delete_animation_template("template uid");
+```
+
+##### Options for `create_animation_template` / `update_animation_template`
+
+- `name` *required for create* (`string`)
+- `description` (`string`)
+- `tags` (`array`)
+- `width` / `height`: canvas size in pixels, 100–3000 (`integer`)
+- `frame_rate`: `24`, `30`, or `60` (`integer`)
+
+### Animations (V5)
+
+Rendering an animation is **always asynchronous** — there is no sync host for animations. Poll `get_animation` until the status is `"completed"` or `"failed"`, or subscribe to a webhook with the resource `"animation"`.
+
+```php
+$animation = $bb->create_animation("animation template uid", [
+    "modifications" => [
+        "template" => ["width" => 1080, "height" => 1080, "fps" => 30],
+        "objects" => [
+            ["name" => "headline", "text" => "Hello World!"],
+        ],
+    ],
+    "formats" => ["mp4"],
+]);
+
+$animation = $bb->get_animation($animation["uid"]);
+$animation["status"];  // "queued" | "rendering" | "completed" | "failed"
+if ($animation["status"] === "completed") {
+    echo $animation["files"]["mp4"];
+}
+
+$bb->list_animations(1);
+```
+
+##### Options for `create_animation`
+
+- `modifications`: V5 modifications array (`array`)
+- `formats`: `["mp4"]` or `["mov"]`. Ignored when `transparent` is set — that always yields MOV (`array`)
+- `metadata`: include any metadata to reference at a later point (`string`)
+
+Template-level modification keys for animations: `width`, `height`, `fps` (`24`, `30`, or `60`), and `transparent`. Setting `transparent` renders on a transparent background and forces a MOV output, so the alpha channel survives.
+
+### Workflows (V5)
+
+Workflows chain several steps into one named, re-runnable operation. They are read-only through the API — build them in the Bannerbear UI, then run them here.
+
+```php
+$bb->list_workflows(1);
+
+$workflow = $bb->get_workflow("workflow uid");
+$workflow["inputs"];  // the inputs this workflow declares
+$workflow["steps"];
+```
+
+### Workflow Runs (V5)
+
+A run is **asynchronous**. Poll `get_workflow_run` until the status is `"completed"` or `"failed"`, or subscribe to a webhook with the resource `"workflow_run"`.
+
+```php
+$run = $bb->create_workflow_run("workflow uid", [
+    "inputs" => [
+        "headline" => "Hello World!",
+        "photo" => "https://example.com/photo.jpg",
+    ],
+]);
+
+$run = $bb->get_workflow_run($run["uid"]);
+$run["status"];  // "queued" | "running" | "completed" | "failed"
+if ($run["status"] === "completed") {
+    print_r($run["outputs"]);
+}
+
+$bb->list_workflow_runs(1);
+```
+
+##### Options for `create_workflow_run`
+
+- `inputs`: values for the workflow's declared inputs (`array`)
+
 ### Tools (V5)
 
 Tools are standalone media operations that do not use a template. Every tool is **asynchronous**: the call returns a pending *tool job*. Poll `get_tool_job` until the status is `"completed"` or `"failed"`, or subscribe to a webhook with the resource `"tool_job"`.
@@ -175,11 +277,11 @@ Every tool also accepts an optional `metadata` string.
 | `remove_bg` | `image_url` | — | `image_url` |
 | `create_pdf` | `urls` | — | `pdf_url` |
 | `trim_video` | `video_url`, `start`, `end` | — | `video_url` |
-| `concat_videos` | `video_urls` | `width`, `height` | `video_url` |
+| `concat_videos` | `video_urls` | `width`, `height`, `fps` | `video_url` |
 | `resize_video` | `video_url`, `width`, `height` | `fit` | `video_url` |
 | `crop_video` | `video_url`, `x`, `y`, `width`, `height` | — | `video_url` |
-| `overlay_video` | `base_video_url`, `overlay_video_url`, `x`, `y` | `scale`, `start` | `video_url` |
-| `overlay_image` | `video_url`, `image_url`, `x`, `y` | `opacity` | `video_url` |
+| `overlay_video` | `base_video_url`, `overlay_video_url` | `position`, `margin`, `x`, `y`, `scale`, `start` | `video_url` |
+| `overlay_image` | `video_url`, `image_url` | `position`, `margin`, `x`, `y`, `opacity` | `video_url` |
 | `subtitle_video` | `video_url` | `language`, `font`, `font_size`, `color`, `bold`, `italic`, `outline_color`, `outline_width`, `shadow_size`, `shadow_color`, `background_style`, `background_color`, `alignment` | `video_url` |
 | `generate_voiceover` | `text`, `voice` | — | `audio_url` |
 | `add_audio` | `video_url`, `audio_url`, `mode` | `volume`, `loop`, `ducking` | `video_url` |
@@ -188,10 +290,21 @@ Every tool also accepts an optional `metadata` string.
 | `apply_color_filter` | `video_url`, `filter` | — | `video_url` |
 | `soften_video` | `video_url`, `strength` | — | `video_url` |
 
+Place the two overlay tools with **either** `position` (plus an optional `margin`) **or** `x`/`y` — not both. `position` accepts `top_left`, `top_center`, `top_right`, `center`, `bottom_left`, `bottom_center`, and `bottom_right`. `resize_video` accepts a `fit` of `cover` (crops), `contain` (letterboxes), or `blur` (fills the bars with a blurred copy).
+
 A few examples:
 
 ```php
 $bb->remove_bg(["image_url" => "https://example.com/product.png"]);
+
+// Corner placement, 40px in from each edge
+$bb->overlay_image([
+    "video_url" => "https://example.com/clip.mp4",
+    "image_url" => "https://example.com/logo.png",
+    "position" => "bottom_right",
+    "margin" => 40,
+    "opacity" => 0.8,
+]);
 
 $bb->subtitle_video([
     "video_url" => "https://example.com/talk.mp4",
@@ -283,8 +396,6 @@ $hook = $bb->create_webhook([
     "resource" => "image",
     "event" => "completed",
     "status" => "active",
-    "scope" => "all_templates",
-    "templates" => [],
 ]);
 
 // IMPORTANT: signing_key is ONLY returned in the create response. Store it now —
@@ -296,11 +407,9 @@ echo $hook["signing_key"];
 
 - `name` *required* (`string`)
 - `url` *required* — the URL that receives the events (`string`)
-- `resource`: `"image"`, `"batch"`, or `"tool_job"` (`string`)
+- `resource`: `"image"`, `"batch"`, `"tool_job"`, `"animation"`, or `"workflow_run"` (`string`)
 - `event`: `"all_events"`, `"completed"`, or `"failed"` (`string`)
 - `status`: `"active"` or `"disabled"` (`string`)
-- `scope`: `"all_templates"` or `"specific_templates"` (`string`)
-- `templates`: template UIDs, used when `scope` is `"specific_templates"` (`array`)
 
 CRUD:
 
@@ -312,7 +421,6 @@ $bb->update_webhook("webhook uid", [
     "resource" => "image",
     "event" => "completed",
     "status" => "active",
-    "scope" => "all_templates",
 ]);
 $bb->delete_webhook("webhook uid");
 $bb->list_webhooks(1);

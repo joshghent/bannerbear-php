@@ -104,6 +104,113 @@ class Client
     }
 
     // =================================
+    //       ANIMATION TEMPLATES
+    // =================================
+
+    public function list_animation_templates(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/animation_templates' . $qs);
+    }
+
+    public function get_animation_template(string $uid)
+    {
+        return $this->factory()->get('/animation_templates/' . $uid);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function create_animation_template(array $params)
+    {
+        return $this->factory()->post('/animation_templates', $params);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function update_animation_template(string $uid, array $params)
+    {
+        return $this->factory()->patch('/animation_templates/' . $uid, $params);
+    }
+
+    public function delete_animation_template(string $uid)
+    {
+        return $this->factory()->delete('/animation_templates/' . $uid);
+    }
+
+    // =================================
+    //            ANIMATIONS
+    // =================================
+    //
+    // Rendering is always asynchronous — there is no synchronous host for
+    // animations. Poll get_animation until the status is "completed" or
+    // "failed", or subscribe to a webhook with the resource "animation".
+
+    public function get_animation(string $uid)
+    {
+        return $this->factory()->get('/animations/' . $uid);
+    }
+
+    public function list_animations(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/animations' . $qs);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function create_animation(string $uid, array $params)
+    {
+        $params['template'] = $uid;
+        return $this->factory()->post('/animations', $params);
+    }
+
+    // =================================
+    //            WORKFLOWS
+    // =================================
+
+    public function list_workflows(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/workflows' . $qs);
+    }
+
+    public function get_workflow(string $uid)
+    {
+        return $this->factory()->get('/workflows/' . $uid);
+    }
+
+    // =================================
+    //          WORKFLOW RUNS
+    // =================================
+    //
+    // A run is asynchronous. Poll get_workflow_run until the status is
+    // "completed" or "failed", or subscribe to a webhook with the resource
+    // "workflow_run".
+
+    public function list_workflow_runs(?int $page = null)
+    {
+        $qs = $page ? '?page=' . $page : '';
+        return $this->factory()->get('/workflow_runs' . $qs);
+    }
+
+    public function get_workflow_run(string $uid)
+    {
+        return $this->factory()->get('/workflow_runs/' . $uid);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     */
+    public function create_workflow_run(string $uid, array $params = [])
+    {
+        $params['workflow'] = $uid;
+        return $this->factory()->post('/workflow_runs', $params);
+    }
+
+    // =================================
     //              TOOLS
     // =================================
     //
